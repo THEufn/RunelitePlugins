@@ -45,16 +45,22 @@ public class SceneryHiderPlugin extends Plugin {
         toggleObjects();
     }
 
+    @Override
+    protected void shutDown() throws Exception {
+        // Restore all hidden objects when the plugin is turned off
+        restoreObjects();
+    }
+
     @Subscribe
     public void onGameObjectSpawned(GameObjectSpawned event) {
-        int spawnedObjectId = event.getGameObject().getId();
+        GameObject gameObject = event.getGameObject();
 
-        // Check if the object ID is in the list of IDs to hide
-        for (int hiddenObjectId : hiddenObjectIds) {
-            if (spawnedObjectId == hiddenObjectId) {
-                // Hide the object if it matches an ID in the list
-                client.getScene().removeGameObject(event.getGameObject());
-                break;
+        if (gameObject != null) {
+            int spawnedObjectId = gameObject.getId();
+
+            // Check if the object ID is in the list of IDs to hide
+            if (shouldHideObject(spawnedObjectId)) {
+                client.getScene().removeGameObject(gameObject);
             }
         }
     }
@@ -92,16 +98,18 @@ public class SceneryHiderPlugin extends Plugin {
         hiddenObjectIds = Arrays.copyOf(hiddenObjectIds, validCount);
     }
 
+    private void restoreObjects() {
+        // Setting the game state to loading forces a full map reload, which will reload all the objects
+        clientThread.invokeLater(() -> {
+            if (client.getGameState() == GameState.LOGGED_IN) {
+                client.setGameState(GameState.LOADING);
+            }
+        });
+    }
+
     private void toggleObjects() {
         if (client.getGameState() == GameState.LOGGED_IN) {
-            // Setting the game state to loading forces a full map reload,
-            // which will reload all the objects
-
-            clientThread.invoke(() -> {
-                if (client.getGameState() == GameState.LOGGED_IN) {
-                    client.setGameState(GameState.LOADING);
-                }
-            });
+            restoreObjects();
 
             // Get the player's current location
             WorldPoint playerLocation = client.getLocalPlayer().getWorldLocation();
@@ -117,10 +125,7 @@ public class SceneryHiderPlugin extends Plugin {
                 GameObject[] objects = tile.getGameObjects();
                 if (objects != null) {
                     for (GameObject gameObject : objects) {
-                        int objectId = gameObject.getId();
-                        boolean shouldHide = shouldHideObject(objectId);
-
-                        if (shouldHide) {
+                        if (gameObject != null && shouldHideObject(gameObject.getId())) {
                             client.getScene().removeGameObject(gameObject);
                         }
                     }
@@ -129,8 +134,8 @@ public class SceneryHiderPlugin extends Plugin {
         }
     }
 
-    // Check if the object ID should be hidden based on the current configuration
     private boolean shouldHideObject(int objectId) {
+        // Check if the object ID should be hidden based on the current configuration
         for (int hiddenObjectId : hiddenObjectIds) {
             if (objectId == hiddenObjectId) {
                 return true;
